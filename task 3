@@ -1,0 +1,64 @@
+import os
+import tempfile
+ 
+class InvalidRecord(Exception):
+    """Raised when an attendance line is not in the expected format."""
+ 
+def parse_line(line):
+    parts = [field.strip() for field in line.strip().split(",")]
+    if len(parts) != 3:
+        raise InvalidRecord(f"expected 3 fields, found {len(parts)}")
+    reg_no, date_text, status = parts
+    if not reg_no or not date_text:
+        raise InvalidRecord("register number/date is empty")
+    if status not in ("P", "A"):
+        raise InvalidRecord(f"invalid status '{status}'")
+    return reg_no, date_text, status
+ 
+def summarise(path):
+    present, absent = 0, 0
+    errors = []
+    line_count = 0
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            for line_count, line in enumerate(file, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    reg_no, date_text, status = parse_line(line)
+                    if status == "P":
+                        present += 1
+                    else:
+                        absent += 1
+                except InvalidRecord as error:
+                    errors.append((line_count, str(error)))
+    except FileNotFoundError as error:
+        errors.append((0, f"file not found: {error}"))
+    except PermissionError as error:
+        errors.append((0, f"permission denied: {error}"))
+    except UnicodeDecodeError as error:
+        errors.append((0, f"encoding error: {error}"))
+    else:
+        if line_count == 0:
+            errors.append((0, "empty file"))
+    finally:
+        print(f"Finished processing: {path}")
+    return present, absent, errors
+ 
+if __name__ == "__main__":
+    data = (
+        "192311001,2026-10-08,P\\n"
+        "192311002,2026-10-08,A\\n"
+        "192311003,2026-10-08\\n"
+        "192311004,2026-10-08,L\\n"
+    )
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".csv", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(data)
+        filename = tmp.name
+ 
+    try:
+        print(summarise(filename))
+    finally:
+        os.remove(filename)
