@@ -1,0 +1,201 @@
+from pathlib import Path
+
+import csv
+
+ 
+
+def valid_email(email):
+
+    email = email.strip()
+
+    if email.count("@") != 1:
+
+        return False
+
+    local, domain = email.split("@")
+
+    return bool(local and domain and "." in domain
+
+                and not domain.startswith(".")
+
+                and not domain.endswith("."))
+
+ 
+
+def parse_registration(line):
+
+    # Format: reg;name;department;email;event1;event2
+
+    parts = [part.strip() for part in line.strip().split(";")]
+
+    if len(parts) < 5:
+
+        raise ValueError("expected register number, name, department, email and event")
+
+    reg, name, department, email = parts[:4]
+
+    events = [event.strip() for event in ";".join(parts[4:]).split(";")
+
+              if event.strip()]
+
+    if not all([reg, name, department]):
+
+        raise ValueError("register number/name/department is empty")
+
+    if not valid_email(email):
+
+        raise ValueError(f"invalid email '{email}'")
+
+    if not events:
+
+        raise ValueError("no event selected")
+
+    return {"register": reg, "name": name, "department": department,
+
+            "email": email, "events": events}
+
+ 
+
+def process_department_files(input_folder, output_folder, filenames):
+
+    input_folder = Path(input_folder)
+
+    output_folder = Path(output_folder)
+
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+ 
+
+    seen = set()
+
+    master = []
+
+    event_groups = {}
+
+    errors = []
+
+    total_lines = 0
+
+    accepted = 0
+
+ 
+
+    for filename in filenames:
+
+        path = input_folder / filename
+
+        try:
+
+            with path.open("r", encoding="utf-8") as file:
+
+                for line_no, line in enumerate(file, start=1):
+
+                    total_lines += 1
+
+                    if not line.strip():
+
+                        continue
+
+                    try:
+
+                        record = parse_registration(line)
+
+                        reg = record["register"]
+
+                        if reg in seen:
+
+                            raise ValueError(f"duplicate register number '{reg}'")
+
+                        seen.add(reg)
+
+                        master.append(record)
+
+                        accepted += 1
+
+                        for event in record["events"]:
+
+                            event_groups.setdefault(event, []).append(record)
+
+                    except ValueError as error:
+
+                        errors.append((filename, line_no, str(error)))
+
+        except (FileNotFoundError, PermissionError, UnicodeDecodeError, OSError) as error:
+
+            errors.append((filename, 0, f"{type(error).__name__}: {error}"))
+
+ 
+
+    def write_records(path, records):
+
+        with path.open("w", newline="", encoding="utf-8") as file:
+
+            writer = csv.writer(file)
+
+            writer.writerow(["register_number", "name", "department", "email", "events"])
+
+            for rec in records:
+
+                writer.writerow([rec["register"], rec["name"], rec["department"],
+
+                                 rec["email"], ";".join(rec["events"])])
+
+ 
+
+    write_records(output_folder / "master_list.csv", master)
+
+ 
+
+    for event, records in sorted(event_groups.items()):
+
+        safe_name = "".join(ch.lower() if ch.isalnum() else "_" for ch in event)
+
+        write_records(output_folder / f"event_{safe_name}.csv", records)
+
+ 
+
+    with (output_folder / "summary.txt").open("w", encoding="utf-8") as file:
+
+        file.write(f"Input lines read: {total_lines}\\n")
+
+        file.write(f"Accepted registrations: {accepted}\\n")
+
+        file.write(f"Event categories: {len(event_groups)}\\n")
+
+        file.write(f"Rejected/error entries: {len(errors)}\\n")
+
+        for event, records in sorted(event_groups.items()):
+
+            file.write(f"{event}: {len(records)} participant(s)\\n")
+
+ 
+
+    with (output_folder / "errors.log").open("w", encoding="utf-8") as file:
+
+        for filename, line_no, message in errors:
+
+            file.write(f"{filename}:{line_no}: {message}\\n")
+
+ 
+
+    return master, event_groups, errors
+
+ 
+
+if __name__ == "__main__":
+
+    departments = [f"department{i}.txt" for i in range(1, 6)]
+
+    master, groups, errors = process_department_files(
+
+        "input", "output", departments
+
+    )
+
+    print("Accepted registrations:", len(master))
+
+    print("Event categories:", len(groups))
+
+    print("Rejected/error entries:", len(errors))
+
+    print("Output folder: output")
