@@ -1,0 +1,61 @@
+reader.py
+from pathlib import Path
+ 
+def read_attendance(folder):
+    records, errors = [], []
+    for path in sorted(Path(folder).glob("*.csv")):
+        try:
+            with path.open(encoding="utf-8") as f:
+                for no, line in enumerate(f, 1):
+                    if not line.strip(): continue
+                    fields = [x.strip() for x in line.split(",")]
+                    if len(fields) != 3 or fields[2] not in ("P", "A"):
+                        errors.append((path.name, no, "Invalid record"))
+                    else:
+                        records.append(tuple(fields))
+        except (OSError, UnicodeDecodeError) as e:
+            errors.append((path.name, 0, str(e)))
+    return records, errors
+stats.py
+def calculate(records):
+    counts = {}
+    history = {}
+    for reg, date, status in records:
+        counts.setdefault(reg, [0, 0])
+        counts[reg][0 if status == "P" else 1] += 1
+        history.setdefault(reg, []).append((date, status))
+    percentages = {}
+    for reg, (present, absent) in counts.items():
+        total = present + absent
+        percentages[reg] = present * 100 / total if total else 0
+    three_absent = []
+    for reg, items in history.items():
+        statuses = [s for date, s in sorted(items)]
+        if any(statuses[i:i+3] == ["A", "A", "A"]
+               for i in range(len(statuses)-2)):
+            three_absent.append(reg)
+    return counts, percentages, three_absent
+report.py
+import csv
+ 
+def write_reports(counts, percentages, three_absent, errors):
+    with open("attendance_three_module.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f); w.writerow(["register", "present", "absent", "percent"])
+        for reg, (p, a) in sorted(counts.items()):
+            w.writerow([reg, p, a, f"{percentages[reg]:.2f}"])
+    with open("absent_three_days.csv", "w", encoding="utf-8") as f:
+        f.write("register_number\\n")
+        for reg in three_absent: f.write(reg + "\\n")
+    with open("attendance_errors.log", "w", encoding="utf-8") as f:
+        for error in errors: f.write(str(error) + "\\n")
+main.py
+from reader import read_attendance
+from stats import calculate
+from report import write_reports
+ 
+if __name__ == "__main__":
+    records, errors = read_attendance("daily_files")
+    counts, percentages, three_absent = calculate(records)
+    write_reports(counts, percentages, three_absent, errors)
+    print("Records:", len(records), "Students:", len(counts),
+          "Three-day absentees:", len(three_absent), "Errors:", len(errors))
