@@ -1,0 +1,31 @@
+from pathlib import Path
+import csv
+ 
+def main(folder="daily_files"):
+    counts, errors = {}, []
+    for path in sorted(Path(folder).glob("*.csv")):
+        try:
+            with path.open(encoding="utf-8") as f:
+                for no, line in enumerate(f, 1):
+                    if not line.strip(): continue
+                    fields = [x.strip() for x in line.split(",")]
+                    if len(fields) != 3 or fields[2] not in ("P", "A"):
+                        errors.append((path.name, no, "Invalid record")); continue
+                    reg, date, status = fields
+                    counts.setdefault(reg, [0, 0])
+                    counts[reg][0 if status == "P" else 1] += 1
+        except (OSError, UnicodeDecodeError) as e:
+            errors.append((path.name, 0, str(e)))
+ 
+    with open("attendance_one_report.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f); w.writerow(["register", "present", "absent", "percent"])
+        for reg, (p, a) in sorted(counts.items()):
+            w.writerow([reg, p, a, f"{100*p/(p+a):.2f}" if p+a else "0.00"])
+ 
+    with open("attendance_one_errors.log", "w", encoding="utf-8") as f:
+        for error in errors: f.write(str(error) + "\\n")
+ 
+    print("Students:", len(counts), "Errors:", len(errors))
+ 
+if __name__ == "__main__":
+    main()
