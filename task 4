@@ -1,0 +1,25 @@
+from pathlib import Path
+ 
+def save_returns(books, log_name="returns.log"):
+    with open(log_name, "a", encoding="utf-8") as log:
+        for book in books:
+            log.write(book + "\n")
+ 
+def process(day_file, log_name="returns.log", error_name="errors.log"):
+    try:
+        with open(day_file, "r", encoding="utf-8") as source:
+            books = [line.strip() for line in source if line.strip()]
+        save_returns(books, log_name)
+    except (FileNotFoundError, PermissionError, UnicodeDecodeError, OSError) as error:
+        with open(error_name, "a", encoding="utf-8") as log:
+            log.write(f"{day_file}: {type(error).__name__}: {error}\n")
+ 
+if __name__ == "__main__":
+    for day, books in {
+        "day1.txt": ["Book A", "Book B"],
+        "day2.txt": ["Book C"],
+        "day3.txt": ["Book D", "Book E"]
+    }.items():
+        Path(day).write_text("\n".join(books) + "\n", encoding="utf-8")
+        process(day)
+    print(Path("returns.log").read_text(encoding="utf-8"))
