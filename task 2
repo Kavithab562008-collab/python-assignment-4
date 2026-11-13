@@ -1,0 +1,54 @@
+from pathlib import Path
+import csv
+ 
+def build_monthly_report(folder):
+    counts = {}       # reg_no: [present, absent]
+    rejected = []
+    folder = Path(folder)
+ 
+    for path in sorted(folder.glob("*.csv")):
+        try:
+            with path.open("r", encoding="utf-8") as file:
+                for line_no, line in enumerate(file, 1):
+                    if not line.strip():
+                        continue
+                    fields = [x.strip() for x in line.split(",")]
+                    if len(fields) != 3:
+                        rejected.append((path.name, line_no, "Expected 3 fields"))
+                        continue
+                    reg_no, date_text, status = fields
+                    if not reg_no or not date_text or status not in ("P", "A"):
+                        rejected.append((path.name, line_no, "Invalid field/status"))
+                        continue
+                    counts.setdefault(reg_no, [0, 0])
+                    counts[reg_no][0 if status == "P" else 1] += 1
+        except (FileNotFoundError, PermissionError, UnicodeDecodeError) as error:
+            rejected.append((path.name, 0, str(error)))
+ 
+    with open("attendance_report.csv", "w", newline="", encoding="utf-8") as out:
+        writer = csv.writer(out)
+        writer.writerow(["register_number", "present", "absent", "percentage"])
+        for reg, (present, absent) in sorted(counts.items()):
+            days = present + absent
+            percent = present * 100 / days if days else 0
+            writer.writerow([reg, present, absent, f"{percent:.2f}"])
+ 
+    with open("below_75.csv", "w", newline="", encoding="utf-8") as out:
+        writer = csv.writer(out)
+        writer.writerow(["register_number", "percentage"])
+        for reg, (present, absent) in sorted(counts.items()):
+            days = present + absent
+            percent = present * 100 / days if days else 0
+            if percent < 75:
+                writer.writerow([reg, f"{percent:.2f}"])
+ 
+    with open("damaged_lines.log", "w", encoding="utf-8") as log:
+        for item in rejected:
+            log.write(",".join(map(str, item)) + "\\n")
+    return counts, rejected
+ 
+if __name__ == "__main__":
+    counts, errors = build_monthly_report("daily_files")
+    print("Students processed:", len(counts))
+    print("Damaged/file errors:", len(errors))
+    print("Reports created: attendance_report.csv, below_75.csv, damaged_lines.log")
